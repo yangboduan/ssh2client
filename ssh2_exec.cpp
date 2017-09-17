@@ -43,8 +43,11 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <iostream>
-
 using namespace std;
+
+
+
+
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
 {
     struct timeval timeout;
@@ -74,6 +77,98 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
 
     return rc;
 }
+
+
+
+int channel_open_session(int rc, LIBSSH2_SESSION * session,int sock,const char * commandline){
+int bytecount;
+int exitcode;
+char *exitsignal=(char *)"none";
+LIBSSH2_CHANNEL *channel;
+while( (channel = libssh2_channel_open_session(session)) == NULL &&
+           libssh2_session_last_error(session,NULL,NULL,0) ==
+           LIBSSH2_ERROR_EAGAIN )
+    {
+        waitsocket(sock, session);
+    }
+    if( channel == NULL )
+    {
+        fprintf(stderr,"Error\n");
+        exit( 1 );
+    }
+
+
+
+    while( (rc = libssh2_channel_exec(channel, commandline)) ==
+           LIBSSH2_ERROR_EAGAIN )
+    {
+               cout<<"the command is "<<commandline; 
+        waitsocket(sock, session);
+    }
+    if( rc != 0 )
+    {
+        fprintf(stderr,"Error\n");
+        exit( 1 );
+    }
+    for( ;; )
+    {
+        /* loop until we block */
+        int rc;
+        do
+        {
+            char buffer[0x4000];
+            rc = libssh2_channel_read( channel, buffer, sizeof(buffer) );
+            if( rc > 0 )
+            {
+                int i;
+                bytecount += rc;
+                fprintf(stderr, "We read:\n");
+		cout <<buffer;
+                cout<<flush;
+                //for( i=0; i < rc; ++i )
+                  //  fputc( buffer[i], stderr);
+                fprintf(stderr, "\n");
+            }
+            else {
+                if( rc != LIBSSH2_ERROR_EAGAIN )
+                    /* no need to output this for the EAGAIN case */
+                    fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
+            }
+        }
+        while( rc > 0 );
+
+        /* this is due to blocking that would occur otherwise so we loop on
+           this condition */
+        if( rc == LIBSSH2_ERROR_EAGAIN )
+        {
+            waitsocket(sock, session);
+        }
+        else
+            break;
+    }
+    exitcode = 127;
+    while( (rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN )
+        waitsocket(sock, session);
+
+    if( rc == 0 )
+    {
+        exitcode = libssh2_channel_get_exit_status( channel );
+        libssh2_channel_get_exit_signal(channel, &exitsignal,
+                                        NULL, NULL, NULL, NULL, NULL);
+    }
+
+    if (exitsignal)
+        fprintf(stderr, "\nGot signal: %s\n", exitsignal);
+    else 
+        fprintf(stderr, "\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
+
+    libssh2_channel_free(channel);
+    channel = NULL;
+    }
+
+
+
+
 
 int main(int argc, char *argv[])
 {
@@ -144,7 +239,7 @@ int main(int argc, char *argv[])
     }
 
     /* Create a session instance */
-    session = libssh2_session_init();//Create a session instance
+    session = libssh2_session_init();
     if (!session)
         return -1;
 
@@ -237,82 +332,15 @@ int main(int argc, char *argv[])
 #endif
 
     /* Exec non-blocking on the remove host */
-    while( (channel = libssh2_channel_open_session(session)) == NULL &&
-           libssh2_session_last_error(session,NULL,NULL,0) ==
-           LIBSSH2_ERROR_EAGAIN )
-    {
-        waitsocket(sock, session);
-    }
-    if( channel == NULL )
-    {
-        fprintf(stderr,"Error\n");
-        exit( 1 );
-    }
-    while( (rc = libssh2_channel_exec(channel, commandline)) == LIBSSH2_ERROR_EAGAIN )//发送shell命令
-    {
-        waitsocket(sock, session);
-    }
-    if( rc != 0 )
-    {
-        fprintf(stderr,"Error\n");
-        exit( 1 );
-    }
-    for( ;; )
-    {
-        /* loop until we block */
-        int rc;
-        do
-        {
-            char buffer[0x4000];
-            rc = libssh2_channel_read( channel, buffer, sizeof(buffer) );//读取命令处理结果
-            if( rc > 0 )
-            {
-		cout<<"内容输出:"<<endl;
-                cout<<buffer;//输出读出的值
-                cout<<flush;  
-            }
-            else {
-                if( rc != LIBSSH2_ERROR_EAGAIN )
-                    /* no need to output this for the EAGAIN case */
-                    fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
-            }
-        }
-        while( rc > 0 );
-
-        /* this is due to blocking that would occur otherwise so we loop on
-           this condition */
-        if( rc == LIBSSH2_ERROR_EAGAIN )
-        {
-            waitsocket(sock, session);
-        }
-        else
-            break;
-    }
-    exitcode = 127;
-    while( (rc = libssh2_channel_close(channel)) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket(sock, session);
-
-    if( rc == 0 )
-    {
-        exitcode = libssh2_channel_get_exit_status( channel );
-        libssh2_channel_get_exit_signal(channel, &exitsignal,
-                                        NULL, NULL, NULL, NULL, NULL);
-    }
-
-    if (exitsignal)
-        fprintf(stderr, "\nGot signal: %s\n", exitsignal);
-    else 
-        fprintf(stderr, "\nEXIT: %d bytecount: %d\n", exitcode, bytecount);
-
-    libssh2_channel_free(channel);
-    channel = NULL;
-
+channel_open_session(rc, session, sock,commandline);
+commandline ="cisco\n";
+channel_open_session(rc, session, sock,commandline);
 shutdown:
 
     libssh2_session_disconnect(session,
                                "Normal Shutdown, Thank you for playing");
     libssh2_session_free(session);
-
+/*dddddddddddddddddddddddddddddddddddddddddddddddddddddddddd*/
 #ifdef WIN32
     closesocket(sock);
 #else
@@ -324,3 +352,8 @@ shutdown:
 
     return 0;
 }
+
+
+
+
+
