@@ -1,6 +1,6 @@
 CPP      = g++
 CC       = gcc
-CFLAGS   = -std=gnu++0x
+CFLAGS   = -std=gnu++0x -g
 OBJ      = ssh2_exec.o 
 LINKOBJ  = ssh2_exec.o 
 BIN      = ssh_exec
