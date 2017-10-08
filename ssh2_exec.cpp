@@ -77,48 +77,107 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
     return rc;
 }
 
-//发送命令函数和显示发送命令后的结果输出
-int send_command( LIBSSH2_CHANNEL *channel, int sock, LIBSSH2_SESSION *session,const char *commandline)
+static int waitsocket_read(int socket_fd, LIBSSH2_SESSION *session)
 {
+    struct timeval timeout;
+    int rc;
+    fd_set fd;
+    fd_set *writefd = NULL;
+    fd_set *readfd = NULL;
+    int dir;
+
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    FD_ZERO(&fd);
+
+    FD_SET(socket_fd, &fd);
+
+    /* now make sure we wait in the correct direction */
+    dir = libssh2_session_block_directions(session);
+
+    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
+        readfd = &fd;
+
+    
+
+    rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
+
+    return rc;
+}
+
+static int waitsocket_write(int socket_fd, LIBSSH2_SESSION *session)
+{
+    struct timeval timeout;
+    int rc;
+    fd_set fd;
+    fd_set *writefd = NULL;
+    fd_set *readfd = NULL;
+    int dir;
+
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    FD_ZERO(&fd);
+
+    FD_SET(socket_fd, &fd);
+
+    /* now make sure we wait in the correct direction */
+    dir = libssh2_session_block_directions(session);
+
+ 
+
+    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
+        writefd = &fd;
+
+    rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
+
+    return rc;
+}
+
+//发送命令函数和显示发送命令后的结果输出
+int send_command_and_display_output_result( LIBSSH2_CHANNEL *channel, int sock, LIBSSH2_SESSION *session,const char *commandline)
+{
+    //write(发送)命令，如果返回 LIBSSH2_ERROR_EAGAIN，说明write(发送)命令被阻塞，则waitsocket,直到可以发送命令
     while( libssh2_channel_write(channel,commandline,strlen(commandline)) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket(sock, session);
-	cout<<"command:"<<commandline<<endl;
-    for( ;; )
+        waitsocket_write(sock, session);
+
+    sleep(2);
+    
+    //sleep(3);
+    int readn;
+    char readbuffer[0x4000];
+    memset(readbuffer,0,0x4000);
+
+    //发送命令后，开始读取命令输出后的结果，如果返回 LIBSSH2_ERROR_EAGAIN，说明read被阻塞，则waitsocket,直到可以read
+    while( (readn=libssh2_channel_read( channel, readbuffer, sizeof(readbuffer) )) == LIBSSH2_ERROR_EAGAIN )
+        waitsocket_read(sock, session);
+
+    while( libssh2_channel_flush(channel) == LIBSSH2_ERROR_EAGAIN)
+	waitsocket(sock, session);
+    //如果读到了数据,则打印输出
+    if( readn > 0 )
     {
-        /* loop until we block */
-        int rc;
-        do
-        {
-            char buffer[0x4000];
-	    memset(buffer,0,0x4000);
-
-	    while( (rc=libssh2_channel_read( channel, buffer, sizeof(buffer) )) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket(sock, session);
-
-            //rc = libssh2_channel_read( channel, buffer, sizeof(buffer) );
-	    cout<<"reading rc:"<<rc<<endl;
-            if( rc > 0 )
-            {
-		cout<<"readingi02";
-                int i;
-                //bytecount += rc;
-                fprintf(stderr, "We read:\n");
-                for( i=0; i < rc; ++i )
-                    fputc( buffer[i], stderr);
-                    rc = 0;
-                fprintf(stderr, "\n");
-            }
-            else {
-                if( rc != LIBSSH2_ERROR_EAGAIN )
-                    /* no need to output this for the EAGAIN case */
-                    fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
-            }
+        char tmp[100];
+	strcpy(tmp,commandline);
+	tmp[strlen(commandline)-1] ='\0';
+	cout<<"<send> ["<<tmp<<"]</send>\t"<<"recv count:"<<readn<<"-------------------"<<endl;
+	cout<<readbuffer<<endl;
+	memset(readbuffer,0,0x4000);
+    } 
+    while( libssh2_channel_flush(channel) == LIBSSH2_ERROR_EAGAIN)
+	waitsocket(sock, session);
+    /*
+	{   
+            int i;
+            //bytecount += rc;
+            fprintf(stdout, "We read:\n");
+            for( i=0; i < readn; ++i )
+                fputc( buffer[i], stdout);
+                //readn = 0;
+            fprintf(stdout, "\n");
         }
-        while( rc > 0 );
-	    cout<<"function rc:"<<rc<<endl;
-
-            break;
-    }
+    */
 }
 
 int main(int argc, char *argv[])
@@ -297,61 +356,35 @@ int main(int argc, char *argv[])
         fprintf(stderr,"Error\n");
         exit( 1 );
     }
-    int abc; 
     
-    while( (abc=libssh2_channel_shell(channel)) ==
+    while( libssh2_channel_shell(channel) ==
            LIBSSH2_ERROR_EAGAIN )
     {
-	cout<<libssh2_channel_shell(channel);
+	//cout<<libssh2_channel_shell(channel);
         waitsocket(sock, session);
     }
-    for( ;; )
-    {
-        /* loop until we block */
-        int rc;
-        do
-        {
-            char buffer[0x4000];
-	    memset(buffer,0,0x4000);
-            rc = libssh2_channel_read( channel, buffer, sizeof(buffer) );
-            if( rc > 0 )
-            {
-                int i;
-                bytecount += rc;
-                fprintf(stderr, "We read:\n");
-                for( i=0; i < rc; ++i )
-                    fputc( buffer[i], stderr);
-		cout<<endl;
-                fprintf(stderr, "\n");
-		rc = 0;//数据读完后，rc置0，退出循环；
-            }
-            else {
-                if( rc != LIBSSH2_ERROR_EAGAIN )
-                    /* no need to output this for the EAGAIN case */
-                    fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
-            }
-        }
-        while( rc > 0 );
+    int readnum;
+    char buffer[0x4000];
+    memset(buffer,0,0x4000);
 
-        /* this is due to blocking that would occur otherwise so we loop on
-           this condition */
-        if( rc == LIBSSH2_ERROR_EAGAIN )
-        {
-            waitsocket(sock, session);
-        }
-        else
-	{
-	    cout<<"break rc:"<<rc<<endl;  
-            break;
-	}
-    }
-    send_command( channel,  sock, session,"en\r\n");
-    send_command( channel,  sock, session,"cisco\r\n");
+    //开始从channel中读取内容，如果返回 LIBSSH2_ERROR_EAGAIN，说明read被阻塞，则waitsocket,直到可以read
+    while( (readnum=libssh2_channel_read( channel, buffer, sizeof(buffer) )) == LIBSSH2_ERROR_EAGAIN )
+        waitsocket_read(sock, session);
+
+    //如果读到了数据,则打印输出
+    if( readnum > 0 )
+    {
+    cout<<"firest recv count:"<<readnum<<"-------------------"<<endl;
+    cout<<buffer<<endl;
+    } 
+
+    send_command_and_display_output_result( channel,  sock, session,"en\n");
+    send_command_and_display_output_result( channel,  sock, session,"cisco\n");
     
-    send_command( channel,  sock, session,"terminal length 0\r\n");
-    send_command( channel,  sock, session,"show run\r\n");
-    send_command( channel,  sock, session,"config t\r\n");
-    send_command( channel,  sock, session,"do show mac add\r\n");
+    send_command_and_display_output_result( channel,  sock, session,"terminal length 0\n");
+    //send_command( channel,  sock, session,"show run\r\n");
+    send_command_and_display_output_result( channel,  sock, session,"config t\n");
+    send_command_and_display_output_result( channel,  sock, session,"do show arp\n");
     
     for( ;; )
     {
@@ -367,8 +400,9 @@ int main(int argc, char *argv[])
                 int i;
                 bytecount += rc;
                 fprintf(stderr, "We read:\n");
-                for( i=0; i < rc; ++i )
-                    fputc( buffer[i], stderr);
+                //for( i=0; i < rc; ++i )
+                  //  fputc( buffer[i], stderr);
+                      rc =0 ;
                 fprintf(stderr, "\n");
             }
             else {
