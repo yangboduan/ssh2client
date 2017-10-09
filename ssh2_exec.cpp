@@ -47,6 +47,7 @@
 
 using namespace std;
 
+//设置监视ssh的session读写变动
 static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
 {
     struct timeval timeout;
@@ -77,92 +78,38 @@ static int waitsocket(int socket_fd, LIBSSH2_SESSION *session)
     return rc;
 }
 
-static int waitsocket_read(int socket_fd, LIBSSH2_SESSION *session)
-{
-    struct timeval timeout;
-    int rc;
-    fd_set fd;
-    fd_set *writefd = NULL;
-    fd_set *readfd = NULL;
-    int dir;
-
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
-
-    FD_ZERO(&fd);
-
-    FD_SET(socket_fd, &fd);
-
-    /* now make sure we wait in the correct direction */
-    dir = libssh2_session_block_directions(session);
-
-    if(dir & LIBSSH2_SESSION_BLOCK_INBOUND)
-        readfd = &fd;
-
-    
-
-    rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
-
-    return rc;
-}
-
-static int waitsocket_write(int socket_fd, LIBSSH2_SESSION *session)
-{
-    struct timeval timeout;
-    int rc;
-    fd_set fd;
-    fd_set *writefd = NULL;
-    fd_set *readfd = NULL;
-    int dir;
-
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
-
-    FD_ZERO(&fd);
-
-    FD_SET(socket_fd, &fd);
-
-    /* now make sure we wait in the correct direction */
-    dir = libssh2_session_block_directions(session);
-
- 
-
-    if(dir & LIBSSH2_SESSION_BLOCK_OUTBOUND)
-        writefd = &fd;
-
-    rc = select(socket_fd + 1, readfd, writefd, NULL, &timeout);
-
-    return rc;
-}
-
 //发送命令函数和显示发送命令后的结果输出
 int send_command_and_display_output_result( LIBSSH2_CHANNEL *channel, int sock, LIBSSH2_SESSION *session,const char *commandline)
 {
     //write(发送)命令，如果返回 LIBSSH2_ERROR_EAGAIN，说明write(发送)命令被阻塞，则waitsocket,直到可以发送命令
     while( libssh2_channel_write(channel,commandline,strlen(commandline)) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket_write(sock, session);
+        waitsocket(sock, session);
 
     sleep(2);
     
-    //sleep(3);
     int readn;
     char readbuffer[0x4000];
     memset(readbuffer,0,0x4000);
 
     //发送命令后，开始读取命令输出后的结果，如果返回 LIBSSH2_ERROR_EAGAIN，说明read被阻塞，则waitsocket,直到可以read
     while( (readn=libssh2_channel_read( channel, readbuffer, sizeof(readbuffer) )) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket_read(sock, session);
+        waitsocket(sock, session);
 
     while( libssh2_channel_flush(channel) == LIBSSH2_ERROR_EAGAIN)
 	waitsocket(sock, session);
+    
     //如果读到了数据,则打印输出
     if( readn > 0 )
     {
-        char tmp[100];
-	strcpy(tmp,commandline);
-	tmp[strlen(commandline)-1] ='\0';
-	cout<<"<send> ["<<tmp<<"]</send>\t"<<"recv count:"<<readn<<"-------------------"<<endl;
-	cout<<readbuffer<<endl;
+        char actual_display_commandline[100];
+	char realbuffer[10000];
+
+        //为了"格式"上方便查看发出去的命令，下面两行是为把发送命令行中的"\n"替换成"\0"
+	strcpy(actual_display_commandline,commandline);
+	actual_display_commandline[strlen(commandline)-1] ='\0';
+
+	cout<<"<send>  ["<<actual_display_commandline<<"]  </send>\t"<<"receive bytecounts: "<<readn<<endl;
+	cout<<"<recv>\n"<<readbuffer<<"</recv>\n"<<endl;
 	memset(readbuffer,0,0x4000);
     } 
     while( libssh2_channel_flush(channel) == LIBSSH2_ERROR_EAGAIN)
@@ -369,7 +316,7 @@ int main(int argc, char *argv[])
 
     //开始从channel中读取内容，如果返回 LIBSSH2_ERROR_EAGAIN，说明read被阻塞，则waitsocket,直到可以read
     while( (readnum=libssh2_channel_read( channel, buffer, sizeof(buffer) )) == LIBSSH2_ERROR_EAGAIN )
-        waitsocket_read(sock, session);
+        waitsocket(sock, session);
 
     //如果读到了数据,则打印输出
     if( readnum > 0 )
@@ -378,17 +325,18 @@ int main(int argc, char *argv[])
     cout<<buffer<<endl;
     } 
 
-    send_command_and_display_output_result( channel,  sock, session,"en\n");
+    send_command_and_display_output_result( channel,  sock, session,"enable\n");
     send_command_and_display_output_result( channel,  sock, session,"cisco\n");
     
     send_command_and_display_output_result( channel,  sock, session,"terminal length 0\n");
     //send_command( channel,  sock, session,"show run\r\n");
-    send_command_and_display_output_result( channel,  sock, session,"config t\n");
+    send_command_and_display_output_result( channel,  sock, session,"configure terminal\n");
     send_command_and_display_output_result( channel,  sock, session,"do show arp\n");
-    
+    send_command_and_display_output_result( channel,  sock, session,"exit\n");
+    send_command_and_display_output_result( channel,  sock, session,"show running-config\n");
+   /* 
     for( ;; )
     {
-        /* loop until we block */
         int rc;
         do
         {
@@ -407,14 +355,11 @@ int main(int argc, char *argv[])
             }
             else {
                 if( rc != LIBSSH2_ERROR_EAGAIN )
-                    /* no need to output this for the EAGAIN case */
                     fprintf(stderr, "libssh2_channel_read returned %d\n", rc);
             }
         }
         while( rc > 0 );
 
-        /* this is due to blocking that would occur otherwise so we loop on
-           this condition */
         if( rc == LIBSSH2_ERROR_EAGAIN )
         {
             waitsocket(sock, session);
@@ -422,6 +367,7 @@ int main(int argc, char *argv[])
         else
             break;
     }
+    */
     exitcode = 127;
     
     /*
