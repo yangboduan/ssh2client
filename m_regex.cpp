@@ -90,7 +90,7 @@ string print_interface_IPAddr_regex(const string& str){
 //利用正在表达式输入arp表，IP和MAC地址的对应关系
 string print_arp_regex(const string& str){
     int n=0;
-    regex reg("(\\d+.\\d+.\\d+.\\d+.)\\s+[0-9-]+\\s+([A-Za-z0-9]{4}.[A-Za-z0-9]{4}.[A-Za-z0-9]{4})\\s+");
+    regex reg("(\\d+\\.\\d+\\.\\d+\\.\\d+)\\s+[0-9-]+\\s+([A-Za-z0-9]{4}\\.[A-Za-z0-9]{4}\\.[A-Za-z0-9]{4})\\s+");
     string::const_iterator start(str.begin()),
                             end(str.end());
     match_results<string::const_iterator> what;
@@ -113,19 +113,19 @@ string print_arp_regex(const string& str){
 //利用正在表达式输入mac表，vlan-MAC-interface地址的对应关系
 string print_MACTable_regex(const string& str){
     int n=0;
-    regex reg("(\d+)\\s+[A-Za-z0-9]{4}.[A-Za-z0-9]{4}.[A-Za-z0-9]{4})\\s+()");
+    regex reg("(\\d+)\\s+([A-Za-z0-9]{4}\\.[A-Za-z0-9]{4}\\.[A-Za-z0-9]{4})\\s+\\w+\\s+([a-zA-Z0-9/]+)");
     string::const_iterator start(str.begin()),
                             end(str.end());
     match_results<string::const_iterator> what;
     string res("");
     while (regex_search(start,end,what,reg,match_default)){
 	n++;
-        res+=what[1]+"-----------"+what[2]+"\n";
+        res+=what[1]+"-----------"+what[2]+"------------"+what[3]+"\n";
         start=what[0].second;
     }
     if (res.length() >0)
     {
-    cout<<"infomation of arp  "<<endl;
+    cout<<"infomation of MAC table"<<endl;
     cout<<res;
     cout<<"match counts:"<<n<<endl; 
     }

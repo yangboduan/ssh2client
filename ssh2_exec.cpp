@@ -110,15 +110,19 @@ int send_command_and_display_output_result( LIBSSH2_CHANNEL *channel, int sock, 
 	strcpy(actual_display_commandline,commandline);
 	actual_display_commandline[strlen(commandline)-1] ='\0';
 
-	cout<<"<send>  ["<<actual_display_commandline<<"]  </send>\t"<<"receive bytecounts: "<<readn<<endl;
-	cout<<"<recv>\n"<<readbuffer<<"</recv>\n"<<endl;
+	//cout<<"<send>  ["<<actual_display_commandline<<"]  </send>\t"<<"receive bytecounts: "<<readn<<endl;
+	//cout<<"<recv>\n"<<readbuffer<<"</recv>\n"<<endl;
 	
 	string str =readbuffer;
 	
 	//输出接口和IP地址的对应关系
-	print_interface_IPAddr_regex(str);
-	print_arp_regex(str);
-
+	if (strcmp(commandline,"show ip int br\n") == 0)
+	    print_interface_IPAddr_regex(str);
+    
+	if(strcmp(commandline,"show arp\n") == 0)
+	    print_arp_regex(str);
+	if(strcmp(commandline,"show mac addr\n") == 0)
+	    print_MACTable_regex(str);
 	
 	memset(readbuffer,0,0x4000);
     } 
@@ -342,6 +346,7 @@ int main(int argc, char *argv[])
     send_command_and_display_output_result( channel,  sock, session,"terminal length 0\n");
     send_command_and_display_output_result( channel,  sock, session,"show ip int br\n");
     send_command_and_display_output_result( channel,  sock, session,"show arp\n");
+    send_command_and_display_output_result( channel,  sock, session,"show mac addr\n");
     //send_command( channel,  sock, session,"show run\r\n");
     //send_command_and_display_output_result( channel,  sock, session,"configure terminal\n");
     //send_command_and_display_output_result( channel,  sock, session,"do show arp\n");
