@@ -45,6 +45,8 @@
 #include <ctype.h>
 #include <iostream>
 
+#include <boost/regex.hpp>
+#include "m_regex.h"
 using namespace std;
 
 //设置监视ssh的session读写变动
@@ -110,6 +112,14 @@ int send_command_and_display_output_result( LIBSSH2_CHANNEL *channel, int sock, 
 
 	cout<<"<send>  ["<<actual_display_commandline<<"]  </send>\t"<<"receive bytecounts: "<<readn<<endl;
 	cout<<"<recv>\n"<<readbuffer<<"</recv>\n"<<endl;
+	
+	string str =readbuffer;
+	
+	//输出接口和IP地址的对应关系
+	print_interface_IPAddr_regex(str);
+	print_arp_regex(str);
+
+	
 	memset(readbuffer,0,0x4000);
     } 
     while( libssh2_channel_flush(channel) == LIBSSH2_ERROR_EAGAIN)
@@ -147,6 +157,7 @@ int main(int argc, char *argv[])
     size_t len;
     LIBSSH2_KNOWNHOSTS *nh;
     int type;
+
 
 #ifdef WIN32
     WSADATA wsadata;
@@ -329,11 +340,13 @@ int main(int argc, char *argv[])
     send_command_and_display_output_result( channel,  sock, session,"cisco\n");
     
     send_command_and_display_output_result( channel,  sock, session,"terminal length 0\n");
+    send_command_and_display_output_result( channel,  sock, session,"show ip int br\n");
+    send_command_and_display_output_result( channel,  sock, session,"show arp\n");
     //send_command( channel,  sock, session,"show run\r\n");
-    send_command_and_display_output_result( channel,  sock, session,"configure terminal\n");
-    send_command_and_display_output_result( channel,  sock, session,"do show arp\n");
-    send_command_and_display_output_result( channel,  sock, session,"exit\n");
-    send_command_and_display_output_result( channel,  sock, session,"show running-config\n");
+    //send_command_and_display_output_result( channel,  sock, session,"configure terminal\n");
+    //send_command_and_display_output_result( channel,  sock, session,"do show arp\n");
+    //send_command_and_display_output_result( channel,  sock, session,"exit\n");
+    //send_command_and_display_output_result( channel,  sock, session,"show running-config\n");
    /* 
     for( ;; )
     {
